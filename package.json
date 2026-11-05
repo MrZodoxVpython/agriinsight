@@ -2,11 +2,14 @@
   "name": "agriinsight-fullstack",
   "private": true,
   "version": "1.0.0",
+  "type": "module",
   "workspaces": ["client", "server"],
+  "engines": { "node": ">=20" },
   "scripts": {
     "dev": "concurrently \"npm run dev -w server\" \"npm run dev -w client\"",
     "build": "npm run build -w client",
-    "start": "npm run start -w server"
+    "start": "npm run start -w server",
+    "db:setup": "node server/src/scripts/setup-db.js"
   },
   "devDependencies": { "concurrently": "^9.1.2" }
 }

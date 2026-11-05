@@ -1,9 +1,18 @@
--- Jalankan seluruh file ini melalui Supabase Dashboard > SQL Editor.
+-- Skema AgriInsight untuk database PostgreSQL Supabase.
+-- Jalankan melalui Supabase Dashboard > SQL Editor, atau `npm run db:setup`.
 create extension if not exists pgcrypto;
+
+-- Akun pengguna aplikasi (autentikasi ditangani backend, bukan Supabase Auth).
+create table if not exists public.app_users (
+  id uuid primary key default gen_random_uuid(),
+  email text not null unique,
+  password_hash text not null,
+  created_at timestamptz not null default now()
+);
 
 create table if not exists public.farm_plans (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth.users(id) on delete cascade,
+  user_id uuid not null references public.app_users(id) on delete cascade,
   commodity text not null check (char_length(commodity) between 2 and 80),
   location text not null check (char_length(location) between 3 and 180),
   planted_area_ha numeric(12,2) not null check (planted_area_ha > 0),
@@ -16,19 +25,23 @@ create table if not exists public.farm_plans (
   updated_at timestamptz not null default now()
 );
 
-create index if not exists farm_plans_user_created_idx on public.farm_plans(user_id, created_at desc);
-alter table public.farm_plans enable row level security;
+create index if not exists farm_plans_user_created_idx
+  on public.farm_plans(user_id, created_at desc);
 
-drop policy if exists "Users can view own farm plans" on public.farm_plans;
-create policy "Users can view own farm plans" on public.farm_plans for select to authenticated using (auth.uid() = user_id);
-drop policy if exists "Users can insert own farm plans" on public.farm_plans;
-create policy "Users can insert own farm plans" on public.farm_plans for insert to authenticated with check (auth.uid() = user_id);
-drop policy if exists "Users can update own farm plans" on public.farm_plans;
-create policy "Users can update own farm plans" on public.farm_plans for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
-drop policy if exists "Users can delete own farm plans" on public.farm_plans;
-create policy "Users can delete own farm plans" on public.farm_plans for delete to authenticated using (auth.uid() = user_id);
+-- Akses hanya lewat backend. RLS aktif tanpa policy agar anon key tidak bisa
+-- membaca/menulis tabel secara langsung.
+alter table public.farm_plans enable row level security;
+alter table public.app_users enable row level security;
 
 create or replace function public.set_updated_at()
-returns trigger language plpgsql as $$ begin new.updated_at = now(); return new; end; $$;
+returns trigger language plpgsql as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
 drop trigger if exists set_farm_plans_updated_at on public.farm_plans;
-create trigger set_farm_plans_updated_at before update on public.farm_plans for each row execute function public.set_updated_at();
+create trigger set_farm_plans_updated_at
+  before update on public.farm_plans
+  for each row execute function public.set_updated_at();

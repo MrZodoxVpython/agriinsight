@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Activity, ArrowDownRight, ArrowUpRight, CloudSun, Database, Leaf, Menu, Sprout, TrendingUp, Wallet, Warehouse } from 'lucide-react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { supabase } from './supabase';
+import { api, clearToken, getToken, setToken } from './api';
 
 const demoPrices = [
   { month: 'Jun', price: 28000 }, { month: 'Jul', price: 26500 }, { month: 'Agu', price: 31000 },
@@ -32,55 +32,66 @@ export default function App() {
   const [apiStatus, setApiStatus] = useState('Memeriksa koneksi');
 
   useEffect(() => {
-    if (!supabase) { setApiStatus('Supabase belum dikonfigurasi'); return; }
-    supabase.auth.getSession().then(({ data }) => setUser(data.session?.user ?? null));
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => setUser(session?.user ?? null));
-    return () => listener.subscription.unsubscribe();
+    if (!getToken()) return;
+    api.me()
+      .then(({ user: currentUser }) => setUser(currentUser))
+      .catch(() => { clearToken(); setUser(null); });
   }, []);
 
   useEffect(() => {
-    fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:4000/api'}/health`)
-      .then(r => r.ok ? r.json() : Promise.reject())
-      .then(() => setApiStatus('Backend terhubung')).catch(() => setApiStatus('Backend belum terhubung'));
+    api.health()
+      .then((result) => setApiStatus(result.database === 'connected' ? 'Backend & database terhubung' : 'Database belum terhubung'))
+      .catch(() => setApiStatus('Backend belum terhubung'));
   }, []);
 
   useEffect(() => { if (user) loadRecords(); else setRecords([]); }, [user]);
 
   async function loadRecords() {
-    if (!supabase) return;
     setLoading(true);
-    const { data, error } = await supabase.from('farm_plans').select('*').order('created_at', { ascending: false }).limit(8);
-    if (error) setAuthMessage(`Gagal memuat rencana: ${error.message}`);
-    else setRecords(data || []);
-    setLoading(false);
+    try {
+      setRecords(await api.listPlans());
+    } catch (error) {
+      if (error.status === 401) { clearToken(); setUser(null); }
+      setAuthMessage(`Gagal memuat rencana: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleAuth(event) {
     event.preventDefault(); setAuthMessage('');
-    if (!supabase) { setAuthMessage('Isi VITE_SUPABASE_URL dan VITE_SUPABASE_ANON_KEY terlebih dahulu.'); return; }
-    const result = authMode === 'login'
-      ? await supabase.auth.signInWithPassword({ email, password })
-      : await supabase.auth.signUp({ email, password });
-    if (result.error) setAuthMessage(result.error.message);
-    else if (authMode === 'signup' && !result.data.session) setAuthMessage('Registrasi berhasil. Periksa email untuk konfirmasi akun.');
-    else setAuthMessage('Berhasil.');
+    try {
+      const result = authMode === 'login'
+        ? await api.login({ email, password })
+        : await api.register({ email, password });
+      setToken(result.token);
+      setUser(result.user);
+      setPassword('');
+      setAuthMessage(authMode === 'login' ? 'Berhasil masuk.' : 'Akun berhasil dibuat.');
+    } catch (error) {
+      setAuthMessage(error.message);
+    }
   }
 
   async function savePlan(event) {
     event.preventDefault();
-    if (!supabase || !user) return setAuthMessage('Silakan login dan konfigurasi Supabase.');
+    if (!user) return setAuthMessage('Silakan masuk terlebih dahulu.');
     const payload = {
-      user_id: user.id, commodity: form.commodity, location: form.location.trim(),
+      commodity: form.commodity, location: form.location.trim(),
       planted_area_ha: Number(form.planted_area_ha), planting_date: form.planting_date || null,
       expected_harvest_date: form.expected_harvest_date || null, estimated_yield_kg: Number(form.estimated_yield_kg),
-      production_cost: Number(form.production_cost), expected_price: Number(form.expected_price)
+      production_cost: Number(form.production_cost || 0), expected_price: Number(form.expected_price)
     };
-    if (!payload.location || !payload.planted_area_ha || !payload.estimated_yield_kg || !payload.production_cost || !payload.expected_price) {
+    if (!payload.location || !payload.planted_area_ha || !payload.estimated_yield_kg || !payload.expected_price || Number.isNaN(payload.production_cost)) {
       setAuthMessage('Lengkapi lokasi, luas lahan, estimasi hasil, biaya, dan harga.'); return;
     }
-    const { error } = await supabase.from('farm_plans').insert(payload);
-    if (error) setAuthMessage(error.message);
-    else { setAuthMessage('Rencana tanam berhasil disimpan.'); setShowForm(false); setForm({ commodity: 'Cabai', location: '', planted_area_ha: '', planting_date: '', expected_harvest_date: '', estimated_yield_kg: '', production_cost: '', expected_price: '' }); loadRecords(); }
+    try {
+      await api.createPlan(payload);
+      setAuthMessage('Rencana tanam berhasil disimpan.'); setShowForm(false); setForm({ commodity: 'Cabai', location: '', planted_area_ha: '', planting_date: '', expected_harvest_date: '', estimated_yield_kg: '', production_cost: '', expected_price: '' }); loadRecords();
+    } catch (error) {
+      if (error.status === 401) { clearToken(); setUser(null); }
+      setAuthMessage(error.message);
+    }
   }
 
   const estimatedRevenue = useMemo(() => records.reduce((sum, row) => sum + (Number(row.estimated_yield_kg || 0) * Number(row.expected_price || 0)), 0), [records]);
@@ -88,7 +99,7 @@ export default function App() {
 
   return <div className="app-shell">
     <aside className="sidebar"><a className="brand" href="#home"><span className="brand-mark"><Leaf size={20}/></span><span>Agri<span>Insight</span></span></a><div className="workspace-label">WORKSPACE</div><a className="side-link active" href="#home"><Activity size={17}/> Ringkasan</a><a className="side-link" href="#plans"><Sprout size={17}/> Rencana tanam</a><a className="side-link" href="#market"><TrendingUp size={17}/> Analisis pasar</a><a className="side-link" href="#data"><Database size={17}/> Kualitas data</a><div className="sidebar-bottom"><div className="status-dot"/><span>{apiStatus}</span></div></aside>
-    <main className="main-content" id="home"><header className="topbar"><div><div className="eyebrow">AGRICULTURE BUSINESS INTELLIGENCE</div><h1>Dashboard pertanian</h1></div><div className="top-actions">{user ? <><span className="user-email">{user.email}</span><button className="button button-light" onClick={() => supabase.auth.signOut()}>Keluar</button></> : <a className="button button-primary" href="#account">Masuk / Daftar</a>}</div></header>
+    <main className="main-content" id="home"><header className="topbar"><div><div className="eyebrow">AGRICULTURE BUSINESS INTELLIGENCE</div><h1>Dashboard pertanian</h1></div><div className="top-actions">{user ? <><span className="user-email">{user.email}</span><button className="button button-light" onClick={() => { clearToken(); setUser(null); setRecords([]); setAuthMessage(''); }}>Keluar</button></> : <a className="button button-primary" href="#account">Masuk / Daftar</a>}</div></header>
       <section className="welcome"><div><span className="welcome-tag">DATA-DRIVEN FARMING</span><h2>Keputusan yang lebih baik<br/>dimulai dari <em>data.</em></h2><p>Pahami risiko, hitung kelayakan, dan rencanakan produksi pertanian berdasarkan informasi yang dapat diperiksa.</p><a className="button button-gold" href="#plans">Kelola rencana tanam <ArrowDownRight size={16}/></a></div><div className="welcome-art"><div className="sun"/><div className="hill hill-one"/><div className="hill hill-two"/><div className="field-lines"/></div></section>
       <section className="stats-grid">{metrics.map((item) => <StatCard key={item.label} item={item}/>)}</section>
       <section className="content-grid" id="market"><article className="panel chart-panel"><div className="panel-heading"><div><span className="eyebrow">MARKET OVERVIEW</span><h3>Tren harga komoditas</h3></div><span className="sample-label">DATA ILUSTRASI</span></div><div className="chart-wrap"><ResponsiveContainer width="100%" height="100%"><AreaChart data={demoPrices} margin={{ top: 12, right: 12, left: -14, bottom: 0 }}><defs><linearGradient id="priceFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#2c7751" stopOpacity={0.22}/><stop offset="95%" stopColor="#2c7751" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e8eee6"/><XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#829087', fontSize: 12 }}/><YAxis axisLine={false} tickLine={false} tick={{ fill: '#829087', fontSize: 11 }} tickFormatter={v => `${v/1000}k`}/><Tooltip formatter={v => [`Rp ${Number(v).toLocaleString('id-ID')}/kg`, 'Harga']}/><Area type="monotone" dataKey="price" stroke="#2c7751" strokeWidth={3} fill="url(#priceFill)"/></AreaChart></ResponsiveContainer></div><p className="chart-note">Grafik menggunakan data ilustrasi. Hubungkan sumber harga resmi atau input pasar untuk analisis aktual.</p></article>
