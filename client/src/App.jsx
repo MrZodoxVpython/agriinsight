@@ -273,7 +273,7 @@ export default function App() {
             />
           )}
           {route === 'analysis' && (
-            <AnalysisPage summary={summary} loading={loading} onAddPlan={openCreatePlan} />
+            <AnalysisPage plans={plans} loading={loading} onAddPlan={openCreatePlan} />
           )}
           {route === 'quality' && (
             <QualityPage

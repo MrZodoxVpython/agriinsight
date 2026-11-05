@@ -212,7 +212,9 @@ router.get(
   requireUser,
   wrap(async (req, res) => {
     const { rows } = await query(
-      `select id, commodity, location, planted_area_ha, planting_date, expected_harvest_date,
+      `select id, commodity, location, planted_area_ha,
+              to_char(planting_date, 'YYYY-MM-DD') as planting_date,
+              to_char(expected_harvest_date, 'YYYY-MM-DD') as expected_harvest_date,
               estimated_yield_kg, production_cost, expected_price, status, created_at
          from public.farm_plans
         where user_id = $1`,

@@ -115,23 +115,32 @@ npx vercel --prod
 | POST | `/api/auth/register` | Daftar akun |
 | POST | `/api/auth/login` | Masuk, mengembalikan token JWT |
 | GET | `/api/auth/me` | Data akun aktif |
+| POST | `/api/auth/change-password` | Ubah password akun aktif |
 | GET | `/api/plans` | Daftar rencana tanam pengguna |
 | POST | `/api/plans` | Simpan rencana tanam |
-| GET | `/api/summary` | Ringkasan estimasi omzet/margin |
+| PATCH | `/api/plans` | Perbarui rencana berdasarkan `id` di body |
+| DELETE | `/api/plans?id=<uuid>` | Hapus rencana milik pengguna |
+| GET | `/api/summary` | Ringkasan omzet, margin, kualitas data, dan proyeksi |
 
-Endpoint rencana tanam memerlukan header `Authorization: Bearer <token>`.
+Endpoint rencana tanam dan ringkasan memerlukan header `Authorization: Bearer <token>`.
 
 ## Fitur
-- Dashboard ringkasan dengan grafik harga ilustrasi.
-- Registrasi dan login email/password.
-- Form tambah rencana tanam.
-- Penyimpanan dan pembacaan rencana tanam dari PostgreSQL Supabase.
-- API dengan validasi input, JWT, dan perhitungan estimasi omzet/margin.
+- Dashboard responsif dengan KPI, grafik proyeksi bulanan, dan wawasan otomatis.
+- Registrasi, login, dan ubah password dengan hash scrypt serta JWT.
+- CRUD rencana tanam lengkap: tambah, edit, hapus, pencarian, filter, dan sorting.
+- Analisis usaha mendalam: unit economics per hektar/kg, margin, ROI, harga impas,
+  titik impas hasil, bantalan harga, dan rasio biaya.
+- Analisis sensitivitas harga, biaya, dan hasil panen, plus skenario pesimis/realistis/optimis.
+- Skor risiko portofolio yang mempertimbangkan rencana terburuk dan konsentrasi omzet (HHI).
+- Proyeksi margin bulanan dan akumulasi margin berdasarkan tanggal panen.
+- Penilaian kualitas data per field dan per rencana, serta rekomendasi perbaikan.
+- Ekspor rencana tanam ke CSV (UTF-8, siap Excel/Google Sheets).
 - Setiap pengguna hanya dapat mengakses data miliknya (difilter di backend).
-- Siap deploy sebagai satu proyek Vercel.
+- Siap deploy sebagai satu proyek Vercel dengan database Supabase.
 
 ## Batasan
-- Grafik harga masih data ilustrasi, bukan feed harga pasar aktual.
-- Belum ada integrasi cuaca, sensor tanah, harga resmi, atau model prediksi.
+- Semua angka adalah estimasi dari input pengguna, bukan prediksi hasil aktual.
+- Belum ada integrasi cuaca, sensor tanah, harga pasar resmi, atau model prediksi.
+- Analisis belum memasukkan pajak, bunga pinjaman, penyusutan, dan biaya di luar produksi.
 - Belum ada role admin dan manajemen kelompok tani.
 - Konfirmasi email tidak digunakan; akun langsung aktif setelah registrasi.
