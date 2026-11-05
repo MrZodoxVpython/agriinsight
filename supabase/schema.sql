@@ -21,12 +21,22 @@ create table if not exists public.farm_plans (
   estimated_yield_kg numeric(14,2) not null check (estimated_yield_kg > 0),
   production_cost numeric(16,2) not null default 0 check (production_cost >= 0),
   expected_price numeric(16,2) not null check (expected_price > 0),
+  status text not null default 'planned',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
+-- Kompatibilitas untuk database yang dibuat sebelum kolom status ditambahkan.
+alter table public.farm_plans add column if not exists status text not null default 'planned';
+alter table public.farm_plans drop constraint if exists farm_plans_status_check;
+alter table public.farm_plans
+  add constraint farm_plans_status_check
+  check (status in ('planned', 'planting', 'harvest', 'completed'));
+
 create index if not exists farm_plans_user_created_idx
   on public.farm_plans(user_id, created_at desc);
+create index if not exists farm_plans_user_status_idx
+  on public.farm_plans(user_id, status);
 
 -- Akses hanya lewat backend. RLS aktif tanpa policy agar anon key tidak bisa
 -- membaca/menulis tabel secara langsung.

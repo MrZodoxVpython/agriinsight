@@ -59,12 +59,18 @@ async function request(path, options = {}) {
 
 export const api = {
   health: () => request('/health'),
-  register: (data) =>
-    request('/auth/register', { method: 'POST', body: JSON.stringify(data) }),
+
+  register: (data) => request('/auth/register', { method: 'POST', body: JSON.stringify(data) }),
   login: (data) => request('/auth/login', { method: 'POST', body: JSON.stringify(data) }),
   me: () => request('/auth/me'),
+  changePassword: (data) =>
+    request('/auth/change-password', { method: 'POST', body: JSON.stringify(data) }),
+
   listPlans: async () => (await request('/plans')).data || [],
   createPlan: async (data) =>
     (await request('/plans', { method: 'POST', body: JSON.stringify(data) })).data,
+  updatePlan: async (id, data) =>
+    (await request('/plans', { method: 'PATCH', body: JSON.stringify({ id, ...data }) })).data,
+  deletePlan: async (id) => request(`/plans?id=${encodeURIComponent(id)}`, { method: 'DELETE' }),
   summary: async () => (await request('/summary')).data,
 };
